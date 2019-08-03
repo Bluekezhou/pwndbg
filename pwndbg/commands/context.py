@@ -184,9 +184,35 @@ Unicorn emulation of code near the current instruction
 ''')
 code_lines = pwndbg.config.Parameter('context-code-lines', 10, 'number of additional lines to print in the code context')
 
+class PycharmDebug:
+    def __init__(self, pydev, server='127.0.0.1', port=4444):
+        self.pydev = pydev
+        self.server = server
+        self.port = port
+        self.connected = False
+
+    def connect(self):
+        if self.connected:
+            return
+
+        try:
+            import sys
+            sys.path.append(self.pydev)
+            print(sys.path)
+            import pydevd
+            pydevd.settrace(host=self.server, port=self.port, stdoutToServer=True, stderrToServer=True)
+            self.connected = True
+        except Exception as e:
+            print(e)
+            print("failed to load pycharm debugger")
+
+# 必须使用绝对路径
+# pycharm = PycharmDebug("/home/test/Worktool/pycharm/helpers/pydev")
+
 def context_disasm():
     banner = [pwndbg.ui.banner("disasm")]
     emulate = bool(pwndbg.config.emulate)
+    # pycharm.connect()
     result = pwndbg.commands.nearpc.nearpc(to_string=True, emulate=emulate, lines=code_lines // 2)
 
     # If we didn't disassemble backward, try to make sure

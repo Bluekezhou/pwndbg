@@ -45,7 +45,7 @@ shellcmds = [
     "mktemp",
     "more",
     "mv",
-    "nano",
+    # "nano",
     "nc",
     "ping",
     "pkill",

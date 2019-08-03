@@ -283,7 +283,8 @@ def get_ehdr(pointer):
     base = find_elf_magic(pointer, search_down=True)
     if base is None:
         if pwndbg.abi.linux:
-            print("ERROR: Could not find ELF base!")
+            # print("ERROR: Could not find ELF base!")
+            pass
         return None, None
 
     # Determine whether it's 32- or 64-bit
