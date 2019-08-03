@@ -9,6 +9,8 @@ import re
 
 def get_next_addr(pc):
     """
+    get address of next instruction
+
     pwndbg> x/2i $pc
     => 0x555555554530:	xor    ebp,ebp
     0x555555554532:	mov    r9,rdx
@@ -33,7 +35,7 @@ def get_inst(pc):
     # print('get inst ' + res)
     return res
 
-def get_jump_target(inst):
+def get_addr(inst):
     """
     Args:
         inst - a string from get_inst(addr)
@@ -41,12 +43,26 @@ def get_jump_target(inst):
     res = re.findall(r'0x[0-9a-f]+', inst)
     if not res:
         print("Failed to locate jmp address - " + inst)
-        return -1
+        return None
 
     addr = int(res[0], 16)
     return addr
 
+def parse_inst(line):
+    """
+    split a disassembly line into two parts: address and instrution
+    """
+    parts = line.split(":")
+    if len(parts) != 2:
+        return None, None
 
+    address = get_addr(parts[0])
+    if not address:
+        return None, None
+
+    inst = parts[1].strip()
+    return address, inst
+    
 def run_to_addr(addrs):
     """
     Since the kernel will trap into a read_hpet interrupt, it's hard to to debug the 
@@ -98,7 +114,7 @@ def stepa(count):
         """
         if inst.startswith('j'): # jump instruction
             next_addr = get_next_addr(last_pc)
-            jmp_addr = get_jump_target(inst)
+            jmp_addr = get_addr(inst)
             breakpoints = [next_addr, jmp_addr]
             break
 
@@ -136,7 +152,7 @@ def nexta(count):
 
         elif inst.startswith('j'): # jump instruction
             next_addr = get_next_addr(last_pc)
-            jmp_addr = get_jump_target(inst)
+            jmp_addr = get_addr(inst)
             breakpoints = [next_addr, jmp_addr]
             break
     
@@ -144,3 +160,26 @@ def nexta(count):
         breakpoints.append(pc)
 
     run_to_addr(breakpoints)
+
+parser = argparse.ArgumentParser(description='specific finish command for android kernel')
+@pwndbg.commands.ArgparsedCommand(parser, aliases=["fa"])
+@pwndbg.commands.OnlyWhenRunning
+def finisha():
+    output = gdb.execute("disassemble", to_string=True, from_tty=False)
+    lines = output.splitlines()
+    
+    breakpoints = []
+    for line in lines:
+        addr, inst = parse_inst(line)
+        if not addr:
+            continue
+
+        if inst.startswith("ret"):
+            breakpoints.append(addr)
+
+    if not breakpoints:
+        print("Failed to locate ret instruction")
+        return
+
+    run_to_addr(breakpoints)
+    gdb.execute("stepa")
