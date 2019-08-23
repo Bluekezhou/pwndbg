@@ -6,6 +6,9 @@ import pwndbg.commands
 from pwndbg.emu.emulator import Emulator
 import re
 
+flags_mask = {
+    'zflag': 1 << 6,
+}
 
 def get_next_addr(pc):
     """
@@ -37,6 +40,7 @@ def get_inst(pc):
 
 def get_addr(inst):
     """
+    Parse address from inst, like jump address or memory address
     Args:
         inst - a string from get_inst(addr)
     """
@@ -47,6 +51,23 @@ def get_addr(inst):
 
     addr = int(res[0], 16)
     return addr
+
+def get_numbers(inst):
+    """
+    Parse address from inst, like jump address or memory address
+    Args:
+        inst - a string from get_inst(addr)
+    """
+    res = re.findall(r'0x[0-9a-f]+', inst)
+    if not res:
+        print("No number is found")
+        return 
+    
+    nums = []
+    for num_str in res:
+        nums.append(int(num_str, 16))
+
+    return nums
 
 def parse_inst(line):
     """
@@ -70,13 +91,17 @@ def run_to_addr(addrs):
     disable current breakpoints that it will not stop when program resumes. Then I set 
     a breakpoint and resume program, now it should stop at the breakpoint we just set. 
     The left work is clean the temporary breakpoint and enable original breakpoints.
+
+    NOTE: But there is a bug, that is when you debug a function that is run on multit
+    -thread, the thread or function context you are debugging may change. So DON'T go
+    too far or you will lose yourself.
     """
     gdb.execute("disable")
     breakpoint_ids = []
     for addr in addrs:
         res = gdb.execute("break * " + hex(addr), to_string=True, from_tty=False)
         breakpoint_ids.append(int(res.split(" ")[1]))
-        # print("break at " + hex(addr))
+        print("break at " + hex(addr))
 
     #    input("continue?")
     gdb.execute("continue")
@@ -84,6 +109,42 @@ def run_to_addr(addrs):
         gdb.execute("delete " + str(num))
 
     gdb.execute("enable")
+
+
+def get_jmp_target(inst):
+    """
+    get next instruction address, if not support, return two addresses:
+        next instruction address and jmp address 
+    """
+    target = []
+
+    if inst.startswith("jne"):
+        """
+        pwndbg> info registers $eflags
+        eflags         0x2	[ ]
+        """
+        output = gdb.execute("info registers $eflags", to_string=True, from_tty=False)
+        nums = get_numbers(output)
+        if not nums:
+            print("failed to read $eflags, check it with 'info registers $eflags'")
+            raise Exception
+
+        eflags = nums[0]
+        if eflags & flags_mask['zflag']:
+            target.append(get_next_addr(last_pc))
+
+        else:
+            """
+            The jne instruction alters EIP if the Z flag is not set.
+            """
+            target.append(get_addr(inst))
+        
+    elif inst.startswith('j'): # jump instruction
+        next_addr = get_next_addr(last_pc)
+        jmp_addr = get_addr(inst)
+        target = [next_addr, jmp_addr]
+
+    return target
 
 
 parser = argparse.ArgumentParser(description='specific step command for android kernel')
@@ -108,21 +169,15 @@ def stepa(count):
             pc = get_next_addr(last_pc)
 
         inst = get_inst(last_pc)
-        """
-        emu's prediction is wrong sometimes when encounters conditional
-        jmp instruction, so I handle it by myself.
-        """
-        if inst.startswith('j'): # jump instruction
-            next_addr = get_next_addr(last_pc)
-            jmp_addr = get_addr(inst)
-            breakpoints = [next_addr, jmp_addr]
+        
+        if inst.startswith("j"):
+            breakpoints = get_jmp_target(inst)
             break
 
     if not breakpoints:
         breakpoints.append(pc)
 
     run_to_addr(breakpoints)
-
 
 parser = argparse.ArgumentParser(description='specific next command for android kernel')
 parser.add_argument('count', type=int, nargs="?", default=1, help='stepover next [count] instruction')
@@ -151,9 +206,7 @@ def nexta(count):
             pc = get_next_addr(last_pc)
 
         elif inst.startswith('j'): # jump instruction
-            next_addr = get_next_addr(last_pc)
-            jmp_addr = get_addr(inst)
-            breakpoints = [next_addr, jmp_addr]
+            breakpoints = get_jmp_target(inst)
             break
     
     if not breakpoints:
