@@ -15,5 +15,3 @@ def cgrep(pattern, command):
     for line in output.splitlines():
         if pattern in line:
             print(line)
-
-

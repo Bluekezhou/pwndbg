@@ -55,6 +55,7 @@ import pwndbg.commands.windbg
 import pwndbg.commands.xinfo
 import pwndbg.commands.xor
 import pwndbg.commands.cgrep
+import pwndbg.commands.alias
 import pwndbg.commands.slowstep
 import pwndbg.constants
 import pwndbg.disasm
