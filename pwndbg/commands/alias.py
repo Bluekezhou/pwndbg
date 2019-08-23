@@ -10,6 +10,6 @@ parser.add_argument('filepath', nargs="?", default="break", help='file to save b
 @pwndbg.commands.ArgparsedCommand(parser)
 def sb(filepath):
     cmd = "save breakpoints " + filepath
-    output = gdb.execute(cmd, to_string=True, from_tty=False)
-    print(output)
+    gdb.execute(cmd)
+    print("save breakpoints to " + filepath)
 
