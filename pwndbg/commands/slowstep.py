@@ -23,7 +23,7 @@ def get_next_addr(pc):
     res = re.findall(r'0x[0-9a-f]+', insts[1])
     if not res:
         print("Failed to locate next instruction at address " + hex(pc))
-        return -1
+        raise Exception
 
     addr = int(res[0], 16)
     return addr
@@ -46,8 +46,8 @@ def get_addr(inst):
     """
     res = re.findall(r'0x[0-9a-f]+', inst)
     if not res:
-        print("Failed to locate jmp address - " + inst)
-        return None
+        print("Failed to find address - " + inst)
+        raise Exception
 
     addr = int(res[0], 16)
     return addr
@@ -110,37 +110,52 @@ def run_to_addr(addrs):
 
     gdb.execute("enable")
 
+def get_operation(inst):
+    """
+    get instruction operation
+    """
+    res = re.findall(r"^[a-z]+", inst)
+    if res:
+        return res[0]
 
-def get_jmp_target(inst):
+    return 
+
+def get_jmp_target(pc, inst):
     """
     get next instruction address, if not support, return two addresses:
         next instruction address and jmp address 
     """
     target = []
 
-    if inst.startswith("jne"):
-        """
-        pwndbg> info registers $eflags
-        eflags         0x2	[ ]
-        """
-        output = gdb.execute("info registers $eflags", to_string=True, from_tty=False)
-        nums = get_numbers(output)
-        if not nums:
-            print("failed to read $eflags, check it with 'info registers $eflags'")
-            raise Exception
+    """
+    pwndbg> info registers $eflags
+    eflags         0x2	[ ]
+    """
+    output = gdb.execute("info registers $eflags", to_string=True, from_tty=False)
+    nums = get_numbers(output)
+    if not nums:
+        print("failed to read $eflags, check it with 'info registers $eflags'")
+        raise Exception
 
-        eflags = nums[0]
+    eflags = nums[0]
+
+    operation = get_operation(inst)
+    if operation in ["jne", "jnz"]:
         if eflags & flags_mask['zflag']:
-            target.append(get_next_addr(last_pc))
-
+            target.append(get_next_addr(pc))
         else:
-            """
-            The jne instruction alters EIP if the Z flag is not set.
-            """
+            """ alters EIP if the Z flag is not set """
             target.append(get_addr(inst))
+
+    elif operation in ["je", "jz"]:
+        if eflags & flags_mask['zflag']:
+            """ alters EIP if the Z flag is set """
+            target.append(get_addr(inst))
+        else:
+            target.append(get_next_addr(pc))
         
     elif inst.startswith('j'): # jump instruction
-        next_addr = get_next_addr(last_pc)
+        next_addr = get_next_addr(pc)
         jmp_addr = get_addr(inst)
         target = [next_addr, jmp_addr]
 
@@ -171,7 +186,7 @@ def stepa(count):
         inst = get_inst(last_pc)
         
         if inst.startswith("j"):
-            breakpoints = get_jmp_target(inst)
+            breakpoints = get_jmp_target(last_pc, inst)
             break
 
     if not breakpoints:
@@ -206,7 +221,7 @@ def nexta(count):
             pc = get_next_addr(last_pc)
 
         elif inst.startswith('j'): # jump instruction
-            breakpoints = get_jmp_target(inst)
+            breakpoints = get_jmp_target(last_pc, inst)
             break
     
     if not breakpoints:
