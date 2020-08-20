@@ -22,10 +22,35 @@ def cpu():
     except gdb.error:
         gdb.execute('set $env = (CPUArchState *)$rbp', to_string=True)
 
-    cmd = r"""
-printf "regs {\n"
-printf "    PC: 0x%x\n", $env->gpr[HEX_REG_PC]
-printf "}\n"
-    """
+    regs = {}
     
-    gdb.execute(cmd)
+    for i in range(32):
+        value = gdb.parse_and_eval('$env->gpr[{}]'.format(i))
+        reg = 'R{:0>2}'.format(i)
+        regs[reg] = hex(value)
+    
+    special = ["PC", "SP", "LR"]
+    for reg in special:
+        value = gdb.parse_and_eval('$env->gpr[HEX_REG_{}]'.format(reg))
+        regs[reg] = hex(value)
+
+    print("regs {")
+    for i in range(32):
+        reg = 'R{:0>2}'.format(i)
+        if i % 4 == 0:
+            print("    {:>3}:{:>8}  ".format(reg, regs[reg]), end='')
+        elif i % 4 == 3:
+            print("{:>3}:{:>8}\n".format(reg, regs[reg]), end='')
+        else:
+            print("{:>3}:{:>8}  ".format(reg, regs[reg]), end='')
+
+    for index, reg in enumerate(special):
+        if index == 0:
+            print("    {}: {:>8}  ".format(reg, regs[reg]), end='')
+        elif index == len(special) - 1:
+            print("{}: {:>8}  ".format(reg, regs[reg]))
+        else:
+            print("{}: {:>8}  ".format(reg, regs[reg]), end='')
+
+    print("}")
+
